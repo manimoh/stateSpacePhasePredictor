@@ -28,7 +28,10 @@
 % 3 Kalman filter with the latest parameter estiamtes
 % Last edit: Ani Wodeyar 10/19/2020
 
-function [phase,phaseBounds,allX_full,circstd,cosineSum] = causalPhaseEM_MKmdl(y,initParams)
+% Modify code to check if omega estimates lie within the band-stop
+% frequencies, and use that instead of the pre-defined omaega values.
+
+function [omega, phase,phaseBounds,allX_full,circstd,cosineSum] = causalPhaseEM_MKmdl_temp(y,initParams)
 
     freqs = initParams.freqs;
     Fs = initParams.Fs;
@@ -36,7 +39,7 @@ function [phase,phaseBounds,allX_full,circstd,cosineSum] = causalPhaseEM_MKmdl(y
     sigmaFreqs = initParams.sigmaFreqs;
     sigmaObs = initParams.sigmaObs;
     windowSize = initParams.window;
-    lowFreqBand = initParams.lowFreqBand;
+    freqBands = initParams.freqBands;
 
     if windowSize < Fs
         disp('The window size needs to be different. Setting it equal to sampling rate')
@@ -48,8 +51,8 @@ function [phase,phaseBounds,allX_full,circstd,cosineSum] = causalPhaseEM_MKmdl(y
 
     data = y(1:windowSize);
     % first run to set up parameters
-    [omega, ampEst, allQ, R, stateVec, stateCov] = fit_MKModel_multSines(data,freqs, Fs,ampVec, sigmaFreqs,sigmaObs);
-    lowFreqLoc = find((omega>lowFreqBand(1)) & (omega<lowFreqBand(2)),1);
+    [omega_est, ampEst, allQ, R, stateVec, stateCov] = fit_MKModel_multSines(data,freqs, Fs,ampVec, sigmaFreqs,sigmaObs);
+%     lowFreqLoc = find((omega>lowFreqBand(1)) & (omega<lowFreqBand(2)),1);
 
 %     if isempty(lowFreqLoc)
 %         disp('Low freq band limits incorrect OR there is no low freq signal; retaining initial params')
@@ -59,10 +62,27 @@ function [phase,phaseBounds,allX_full,circstd,cosineSum] = causalPhaseEM_MKmdl(y
 %         [~,lowFreqLoc] = min(abs(freqs-mean(lowFreqBand))); % pick frequency closest to middle of low frequency range
 %     end
     
-    
-    omega = freqs;
-    ampEst = ampVec;
-    allQ = sigmaFreqs;
+    omega = zeros(size(freqs));
+    ampEst_temp = zeros(size(ampVec));
+    allQ_temp = zeros(size(sigmaFreqs));
+    for iF = 1:length(freqs)
+        if omega_est(iF) >= freqBands{iF}(1) && omega_est(iF) <= freqBands{iF}(2)
+            omega(iF) = omega_est(iF);
+            ampEst_temp(iF) = amp_est(iF);
+            allQ_temp(iF) = allQ_temp(iF);
+        else
+            disp_str = sprintf('For frequency band %.0f Hz - %.0f Hz, initial estimates are used\n', ...
+                        freqBands{iF}(1), freqBands{iF}(2));
+            fprintf(disp_str);
+            omega(iF) = freqs(iF);
+            ampEst_temp(iF) = ampVec(iF);
+            allQ_temp(iF) = sigmaFreqs(iF);
+        end
+    end
+
+
+    ampEst = ampEst_temp;
+    allQ = allQ_temp;
 
     % for loop that runs through rest of the data reestimating parameters after
     % generating phase estimates for the whole period using past parameter ests
